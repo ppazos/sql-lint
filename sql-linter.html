@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Linter & Formatter</title>
+    
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- CodeMirror 5 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-ocean.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #12161f;
+            --bg-tertiary: #1a1f2e;
+            --accent-primary: #00d9ff;
+            --accent-secondary: #7c3aed;
+            --accent-success: #10b981;
+            --accent-error: #ef4444;
+            --accent-warning: #f59e0b;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --border-color: #2d3748;
+            --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 217, 255, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container-fluid {
+            position: relative;
+            z-index: 1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(18, 22, 31, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-icon {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-primary);
+            border-radius: 2px;
+            margin-right: 8px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn-custom {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.875rem;
+            padding: 0.5rem 1.25rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-custom::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn-custom:hover::before {
+            left: 100%;
+        }
+
+        .btn-format {
+            background: linear-gradient(135deg, var(--accent-primary), #0099cc);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-format:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-compress {
+            background: linear-gradient(135deg, var(--accent-secondary), #5b21b6);
+            color: white;
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+        }
+
+        .btn-compress:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+        }
+
+        .btn-clear {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--accent-error);
+            border: 1px solid var(--accent-error);
+        }
+
+        .btn-clear:hover {
+            background: var(--accent-error);
+            color: white;
+        }
+
+        /* Editor Container */
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            overflow: hidden;
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            background: rgba(26, 31, 46, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* CodeMirror Styling */
+        .CodeMirror {
+            height: 100%;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: transparent;
+        }
+
+        .CodeMirror-scroll {
+            overflow: auto;
+        }
+
+        .CodeMirror-gutters {
+            background: rgba(26, 31, 46, 0.4);
+            border-right: 1px solid var(--border-color);
+        }
+
+        .CodeMirror-linenumber {
+            color: var(--text-secondary);
+        }
+
+        .CodeMirror-cursor {
+            border-left: 2px solid var(--accent-primary);
+        }
+
+        .CodeMirror-selected {
+            background: rgba(0, 217, 255, 0.2) !important;
+        }
+
+        .CodeMirror-focused .CodeMirror-selected {
+            background: rgba(0, 217, 255, 0.3) !important;
+        }
+
+        .CodeMirror-activeline-background {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: rgba(18, 22, 31, 0.8);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-success);
+            animation: blink 2s ease-in-out infinite;
+        }
+
+        .status-indicator.error {
+            background: var(--accent-error);
+        }
+
+        .status-indicator.warning {
+            background: var(--accent-warning);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Error Message */
+        .error-message {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            right: 1rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--accent-error);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--accent-error);
+            font-size: 0.875rem;
+            display: none;
+            backdrop-filter: blur(10px);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4a5568;
+        }
+
+        /* Loading Animation */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: stretch;
+            }
+
+            .controls {
+                flex-wrap: wrap;
+            }
+
+            .stats {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon"></span>SQL Linter Pro
+            </div>
+            <div class="controls">
+                <button class="btn-custom btn-format" id="formatBtn">
+                    <span>✨ Beautify</span>
+                </button>
+                <button class="btn-custom btn-compress" id="compressBtn">
+                    <span>⚡ Compress</span>
+                </button>
+                <button class="btn-custom btn-clear" id="clearBtn">
+                    <span>🗑️ Clear</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Editor Container -->
+        <div class="editor-container">
+            <div class="editor-wrapper">
+                <textarea id="sqlEditor" placeholder="Paste your SQL here...">-- Paste or type your SQL query here
+SELECT users.id, users.name, orders.order_date, orders.total
+FROM users
+INNER JOIN orders ON users.id = orders.user_id
+WHERE orders.total > 100 AND orders.order_date >= '2024-01-01'
+ORDER BY orders.total DESC
+LIMIT 10;</textarea>
+                <div class="error-message" id="errorMessage"></div>
+                <div class="loading" id="loading">Processing...</div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">Ready</span>
+            </div>
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-label">Lines</span>
+                    <span class="stat-value" id="lineCount">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Chars</span>
+                    <span class="stat-value" id="charCount">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Words</span>
+                    <span class="stat-value" id="wordCount">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CodeMirror 5 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+    
+    <script>
+        // SQL Formatter
+        const sqlFormatter = {
+            format: function(query, config = {}) {
+                const indent = config.indent || '  ';
+                const uppercase = config.uppercase !== false;
+                
+                // Basic SQL formatting
+                let formatted = query;
+                
+                // Remove extra whitespace
+                formatted = formatted.replace(/\s+/g, ' ').trim();
+                
+                // Keywords to uppercase
+                const keywords = [
+                    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
+                    'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON',
+                    'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
+                    'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+                    'CREATE', 'TABLE', 'ALTER', 'DROP', 'TRUNCATE',
+                    'AS', 'DISTINCT', 'UNION', 'ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+                    'IS', 'NULL', 'ASC', 'DESC', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN'
+                ];
+                
+                if (uppercase) {
+                    keywords.forEach(keyword => {
+                        const regex = new RegExp('\\b' + keyword + '\\b', 'gi');
+                        formatted = formatted.replace(regex, keyword.toUpperCase());
+                    });
+                }
+                
+                // Add line breaks
+                formatted = formatted
+                    .replace(/\bSELECT\b/gi, '\nSELECT\n' + indent)
+                    .replace(/\bFROM\b/gi, '\nFROM\n' + indent)
+                    .replace(/\b(INNER|LEFT|RIGHT|FULL|CROSS)\s+JOIN\b/gi, '\n$1 JOIN\n' + indent)
+                    .replace(/\bWHERE\b/gi, '\nWHERE\n' + indent)
+                    .replace(/\bAND\b/gi, '\n' + indent + 'AND')
+                    .replace(/\bOR\b/gi, '\n' + indent + 'OR')
+                    .replace(/\bGROUP\s+BY\b/gi, '\nGROUP BY\n' + indent)
+                    .replace(/\bORDER\s+BY\b/gi, '\nORDER BY\n' + indent)
+                    .replace(/\bHAVING\b/gi, '\nHAVING\n' + indent)
+                    .replace(/\bLIMIT\b/gi, '\nLIMIT')
+                    .replace(/\bOFFSET\b/gi, '\nOFFSET');
+                
+                // Clean up extra newlines
+                formatted = formatted.replace(/\n\s*\n/g, '\n').trim();
+                
+                return formatted;
+            },
+            
+            compress: function(query) {
+                return query
+                    .replace(/--.*$/gm, '') // Remove single-line comments
+                    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+                    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+                    .trim();
+            }
+        };
+        
+        // SQL Syntax Validator
+        class SQLValidator {
+            constructor() {
+                this.keywords = [
+                    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
+                    'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON',
+                    'GROUP', 'ORDER', 'BY', 'HAVING', 'LIMIT', 'OFFSET',
+                    'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+                    'CREATE', 'TABLE', 'ALTER', 'DROP', 'TRUNCATE',
+                    'AS', 'DISTINCT', 'UNION', 'ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+                    'IS', 'NULL', 'ASC', 'DESC', 'EXISTS'
+                ];
+            }
+            
+            validate(query) {
+                const errors = [];
+                
+                if (!query || query.trim() === '') {
+                    return { valid: true, errors: [] };
+                }
+                
+                // Remove comments
+                let cleanQuery = query
+                    .replace(/--.*$/gm, '')
+                    .replace(/\/\*[\s\S]*?\*\//g, '');
+                
+                // Check for unclosed quotes
+                const singleQuotes = (cleanQuery.match(/'/g) || []).length;
+                const doubleQuotes = (cleanQuery.match(/"/g) || []).length;
+                
+                if (singleQuotes % 2 !== 0) {
+                    errors.push('Unclosed single quote detected');
+                }
+                if (doubleQuotes % 2 !== 0) {
+                    errors.push('Unclosed double quote detected');
+                }
+                
+                // Check for unclosed parentheses
+                const openParens = (cleanQuery.match(/\(/g) || []).length;
+                const closeParens = (cleanQuery.match(/\)/g) || []).length;
+                
+                if (openParens !== closeParens) {
+                    errors.push(`Mismatched parentheses: ${openParens} open, ${closeParens} close`);
+                }
+                
+                // Check for basic SQL structure
+                const upperQuery = cleanQuery.toUpperCase();
+                
+                // Check if it contains at least one SQL keyword
+                const hasKeyword = this.keywords.some(keyword => 
+                    upperQuery.includes(keyword)
+                );
+                
+                if (!hasKeyword && cleanQuery.trim().length > 0) {
+                    errors.push('No valid SQL keywords detected');
+                }
+                
+                // Check for SELECT without FROM (common error)
+                if (upperQuery.includes('SELECT') && !upperQuery.includes('FROM') && !upperQuery.match(/SELECT\s+\d+/i)) {
+                    errors.push('SELECT statement should typically have a FROM clause');
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+        }
+        
+        // Initialize Editor
+        const textarea = document.getElementById('sqlEditor');
+        const validator = new SQLValidator();
+        
+        const editor = CodeMirror.fromTextArea(textarea, {
+            mode: 'text/x-sql',
+            theme: 'material-ocean',
+            lineNumbers: true,
+            lineWrapping: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 2,
+            tabSize: 2,
+            indentWithTabs: false,
+            styleActiveLine: true,
+            autofocus: true,
+            extraKeys: {
+                'Ctrl-Space': 'autocomplete'
+            }
+        });
+        
+        // Set editor height
+        editor.setSize('100%', '100%');
+        
+        // Update on change
+        editor.on('change', function() {
+            updateStats();
+            validateSQL();
+        });
+        
+        // Update Statistics
+        function updateStats() {
+            const content = editor.getValue();
+            const lines = content.split('\n').length;
+            const chars = content.length;
+            const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+            
+            document.getElementById('lineCount').textContent = lines;
+            document.getElementById('charCount').textContent = chars;
+            document.getElementById('wordCount').textContent = words;
+        }
+        
+        // Validate SQL
+        function validateSQL() {
+            const content = editor.getValue();
+            const result = validator.validate(content);
+            
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            if (result.valid) {
+                statusIndicator.className = 'status-indicator';
+                statusText.textContent = 'Valid SQL';
+                errorMessage.classList.remove('show');
+            } else {
+                statusIndicator.className = 'status-indicator error';
+                statusText.textContent = 'Syntax Error';
+                errorMessage.textContent = '⚠️ ' + result.errors.join(', ');
+                errorMessage.classList.add('show');
+                
+                setTimeout(() => {
+                    errorMessage.classList.remove('show');
+                }, 5000);
+            }
+        }
+        
+        // Format Button
+        document.getElementById('formatBtn').addEventListener('click', () => {
+            const content = editor.getValue();
+            const formatted = sqlFormatter.format(content);
+            editor.setValue(formatted);
+            showStatus('Formatted', 'success');
+        });
+        
+        // Compress Button
+        document.getElementById('compressBtn').addEventListener('click', () => {
+            const content = editor.getValue();
+            const compressed = sqlFormatter.compress(content);
+            editor.setValue(compressed);
+            showStatus('Compressed', 'success');
+        });
+        
+        // Clear Button
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear the editor?')) {
+                editor.setValue('');
+                showStatus('Cleared', 'success');
+            }
+        });
+        
+        // Show Status Message
+        function showStatus(message, type = 'success') {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            statusIndicator.className = `status-indicator ${type}`;
+            statusText.textContent = message;
+            
+            setTimeout(() => {
+                validateSQL();
+            }, 2000);
+        }
+        
+        // Handle Paste
+        editor.on('paste', () => {
+            setTimeout(validateSQL, 100);
+        });
+        
+        // Initial validation and stats
+        updateStats();
+        validateSQL();
+    </script>
+</body>
+</html>
